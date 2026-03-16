@@ -4,7 +4,7 @@ A modern take on the classic Space Invaders arcade game built with React and Typ
 
 ![Space Invaders](https://img.shields.io/badge/React-19.2.4-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-4.9.5-blue.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
 ---
 
@@ -198,7 +198,7 @@ Potential features to add:
 
 ## 📄 License
 
-MIT License - feel free to use this project for learning or as a base for your own games!
+Licensed under the [Apache License 2.0](LICENSE). Feel free to use this project for learning, modification, or as a base for your own games!
 
 ---
 
