@@ -1,8 +1,10 @@
-import { Entity, EntityType, Position, Size } from './types';
+import { Entity, EntityType, Position, Size, SpawnConfig } from './types';
 import { Player } from './Player';
 import { Projectile, ProjectileType } from './Projectile';
 import { Enemy } from './Enemy';
 import { ShockBlast } from './ShockBlast';
+import { AIDirector } from './AIDirector';
+import { GravityWell } from './GravityWell';
 
 export class GameManager {
   player: Player;
@@ -12,25 +14,81 @@ export class GameManager {
   isPaused: boolean = false;
   canvasSize: Size;
 
+  // AIDirector for adaptive difficulty
+  director: AIDirector;
+  
+  // Gravity wells array
+  gravityWells: GravityWell[] = [];
+  
+  // Gravity well spawning
+  private gravityWellTimer: number = 0;
+  private readonly GRAVITY_WELL_MIN_INTERVAL: number = 20.0;  // seconds
+  private readonly GRAVITY_WELL_MAX_INTERVAL: number = 40.0; // seconds
+  private nextGravityWellSpawn: number = 0;
+
   private spawnTimer: number = 0;
   private projectileCounter: number = 0;
   private playerFireTimer: number = 0;
   private readonly PLAYER_FIRE_RATE: number = 0.2; // 5 shots per second
+  
+  // Current spawn configuration from director
+  private currentSpawnConfig: SpawnConfig;
 
   constructor(width: number, height: number) {
     this.canvasSize = { width, height };
     this.player = new Player(width, height);
+    this.director = new AIDirector();
+    this.currentSpawnConfig = this.director.getSpawnConfig();
+    
+    // Schedule first gravity well
+    this.nextGravityWellSpawn = 5 + Math.random() * 10; // 5-15 seconds initially
   }
 
-  spawnEnemy() {
-    const types = [EntityType.ENEMY_SHIP, EntityType.MONSTER, EntityType.METEOR];
-    const type = types[Math.floor(Math.random() * types.length)];
-    const x = 50 + Math.random() * (this.canvasSize.width - 100);
-    const id = `enemy-${Date.now()}-${Math.random()}`;
+  /**
+   * Spawn enemies based on current director configuration
+   */
+  spawnEnemyWave(): void {
+    const config = this.currentSpawnConfig;
     
-    // Spawn just slightly above the screen
-    const enemy = new Enemy(id, type, x, -40);
-    this.entities.push(enemy);
+    // Spawn multiple enemies per wave based on density
+    for (let i = 0; i < config.enemyDensity; i++) {
+      let type: EntityType;
+      
+      // Determine enemy type based on configured ratios
+      const rand = Math.random();
+      if (rand < config.meteorFrequency) {
+        type = EntityType.METEOR;
+      } else if (rand < config.meteorFrequency + config.monsterRatio) {
+        type = EntityType.MONSTER;
+      } else {
+        type = EntityType.ENEMY_SHIP;
+      }
+      
+      const x = 50 + Math.random() * (this.canvasSize.width - 100);
+      const id = `enemy-${Date.now()}-${Math.random()}`;
+      
+      // Spawn just slightly above the screen
+      const enemy = new Enemy(id, type, x, -40);
+      this.entities.push(enemy);
+    }
+  }
+
+  /**
+   * Spawn a gravity well at a random position in the middle 60% of screen
+   */
+  spawnGravityWell(): void {
+    // Keep wells away from edges (middle 60% of screen)
+    const minX = this.canvasSize.width * 0.2;
+    const maxX = this.canvasSize.width * 0.8;
+    const minY = this.canvasSize.height * 0.25;
+    const maxY = this.canvasSize.height * 0.7;
+    
+    const x = minX + Math.random() * (maxX - minX);
+    const y = minY + Math.random() * (maxY - minY);
+    const id = `gravity-well-${Date.now()}`;
+    
+    const well = new GravityWell(id, x, y);
+    this.gravityWells.push(well);
   }
 
   handleMonsterDeath(monster: Enemy) {
@@ -108,6 +166,9 @@ export class GameManager {
     );
     this.entities.push(bullet);
     this.playerFireTimer = 0;
+    
+    // Record shot for AIDirector
+    this.director.recordShotFired();
   }
 
   fireEnemyBullet(enemy: Enemy) {
@@ -159,6 +220,10 @@ export class GameManager {
         enemies.forEach(e => {
           if (!e.isDead && this.isColliding(p, e)) {
             p.isDead = true;
+            
+            // Record hit for AIDirector
+            this.director.recordHit();
+            
             if (!e.isIndestructible) {
                 e.hp -= 1;
                 if (e.hp <= 0) {
@@ -169,6 +234,9 @@ export class GameManager {
                         e.isDead = true;
                         this.score += 10;
                     }
+                    
+                    // Record kill and score for AIDirector
+                    this.director.recordKill();
                 }
             }
           }
@@ -176,7 +244,12 @@ export class GameManager {
       } else if (p.projType === ProjectileType.ENEMY_BULLET || p.projType === ProjectileType.FIRE_PARTICLE) {
         if (this.isColliding(p, this.player)) {
           p.isDead = true;
-          this.player.hp -= p.projType === ProjectileType.FIRE_PARTICLE ? 5 : 10;
+          const damage = p.projType === ProjectileType.FIRE_PARTICLE ? 5 : 10;
+          this.player.hp -= damage;
+          
+          // Record damage for AIDirector
+          this.director.recordDamageTaken(damage);
+          
           if (this.player.hp <= 0) {
             this.isGameOver = true;
           }
@@ -189,6 +262,27 @@ export class GameManager {
         if (!e.isDead && this.isColliding(e, this.player)) {
             this.isGameOver = true;
         }
+    });
+  }
+
+  /**
+   * Check for gravity well center collisions (bonus kills)
+   */
+  checkGravityWellCollisions() {
+    const enemies = this.entities.filter(e => 
+      e.type === EntityType.ENEMY_SHIP || e.type === EntityType.MONSTER || e.type === EntityType.METEOR
+    ) as Enemy[];
+
+    this.gravityWells.forEach(well => {
+      enemies.forEach(enemy => {
+        if (!enemy.isDead && well.checkCenterCollision(enemy.pos, enemy.size)) {
+          // Enemy destroyed by gravity well - bonus points!
+          enemy.isDead = true;
+          this.score += 15; // Bonus for gravity well kill
+          this.director.recordKill();
+          this.director.recordScore(15);
+        }
+      });
     });
   }
 
@@ -209,23 +303,51 @@ export class GameManager {
   update(deltaTime: number) {
     if (this.isGameOver || this.isPaused) return;
 
+    // Update AIDirector with current game state
+    this.director.update(deltaTime);
+    
+    // Get updated spawn config from director
+    this.currentSpawnConfig = this.director.getSpawnConfig();
+    
+    // Record score changes for director
+    const scoreDelta = this.score - (this.director as any)._lastScore || 0;
+    if (scoreDelta > 0) {
+      this.director.recordScore(scoreDelta);
+    }
+
+    // Spawn enemies based on adaptive difficulty
     this.spawnTimer += deltaTime;
     this.playerFireTimer += deltaTime;
     
-    if (this.spawnTimer > 0.8) { // Every 0.8 seconds
-      this.spawnEnemy();
+    if (this.spawnTimer > this.currentSpawnConfig.spawnInterval / 1000) {
+      this.spawnEnemyWave();
       this.spawnTimer = 0;
     }
 
+    // Spawn gravity wells periodically
+    this.gravityWellTimer += deltaTime;
+    if (this.gravityWellTimer >= this.nextGravityWellSpawn && this.gravityWells.length === 0) {
+      this.spawnGravityWell();
+      // Schedule next spawn (20-40 seconds from now)
+      this.nextGravityWellSpawn = this.GRAVITY_WELL_MIN_INTERVAL + 
+                                  Math.random() * (this.GRAVITY_WELL_MAX_INTERVAL - this.GRAVITY_WELL_MIN_INTERVAL);
+      this.gravityWellTimer = 0;
+    }
+
+    // Update player
     this.player.update(this.canvasSize, deltaTime);
 
+    // Apply gravity well forces to projectiles and enemies BEFORE updating their positions
+    this.applyGravityWells();
+
+    // Update all entities
     this.entities.forEach(e => {
       e.update(this.canvasSize, deltaTime);
       
-      // Enemy firing logic
-      if (e instanceof Enemy) {
+      // Enemy firing logic (adjusted by director config)
+      if (e instanceof Enemy && !e.isFalling) {
         e.fireTimer += deltaTime;
-        const fireRate = e.type === EntityType.MONSTER ? 3 : 2;
+        const fireRate = 1.0 / this.currentSpawnConfig.enemyFireRate;
         if (e.fireTimer > fireRate) {
           this.fireEnemyBullet(e);
           e.fireTimer = 0;
@@ -233,22 +355,61 @@ export class GameManager {
       }
     });
 
-    this.checkCollisions();
+    // Update gravity wells
+    this.gravityWells.forEach(well => well.update(this.canvasSize, deltaTime));
 
-    // Remove dead entities
+    // Check collisions
+    this.checkCollisions();
+    this.checkGravityWellCollisions();
+
+    // Remove dead entities and expired gravity wells
     this.entities = this.entities.filter(e => !e.isDead);
+    this.gravityWells = this.gravityWells.filter(well => !well.isDead);
+  }
+
+  /**
+   * Apply gravitational forces from all active wells to affected entities
+   */
+  applyGravityWells(): void {
+    if (this.gravityWells.length === 0) return;
+
+    this.gravityWells.forEach(well => {
+      // Apply gravity to projectiles (player bullets, enemy bullets, fire particles)
+      const projectiles = this.entities.filter(e => e.type === EntityType.PROJECTILE);
+      projectiles.forEach(p => {
+        well.applyGravity(p.pos, p.velocity);
+      });
+
+      // Apply gravity to falling enemies (debris from shockwaves)
+      const fallingEnemies = this.entities.filter(e => 
+        e instanceof Enemy && (e as Enemy).isFalling
+      );
+      fallingEnemies.forEach(e => {
+        if (e instanceof Enemy && e.isFalling) {
+          // Apply gravity to fallVelocity instead of regular velocity
+          well.applyGravity(e.pos, e.fallVelocity);
+        }
+      });
+    });
   }
 
   draw(ctx: CanvasRenderingContext2D) {
+    // Draw gravity wells first (below enemies but above starfield)
+    this.gravityWells.forEach(well => well.draw(ctx));
+    
+    // Draw player and entities
     this.player.draw(ctx);
     this.entities.forEach(e => e.draw(ctx));
 
-    // UI
+    // UI - Score and Health
     ctx.fillStyle = '#FFF';
     ctx.font = '20px Arial';
     ctx.textAlign = 'left';
     ctx.fillText(`Score: ${this.score}`, 20, 30);
     ctx.fillText(`Health: ${this.player.hp}`, 20, 60);
+
+    // Draw pressure bar at top of screen (thin colored indicator)
+    this.drawPressureBar(ctx);
 
     if (this.isPaused) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -274,12 +435,41 @@ export class GameManager {
     }
   }
 
+  /**
+   * Draw the adaptive difficulty pressure bar at top of screen
+   * Blue (easy) -> White (balanced) -> Red (intense)
+   */
+  private drawPressureBar(ctx: CanvasRenderingContext2D): void {
+    const barWidth = this.canvasSize.width;
+    const barHeight = 4; // Thin bar
+    const barY = 8; // Near top of screen
+    
+    const pressureColor = this.director.getPressureColor();
+    
+    ctx.fillStyle = pressureColor;
+    ctx.fillRect(0, barY, barWidth, barHeight);
+    
+    // Optional: Add a subtle glow effect
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = pressureColor;
+    ctx.fillRect(0, barY, barWidth, barHeight);
+    ctx.shadowBlur = 0; // Reset for other drawing
+  }
+
   reset() {
     this.score = 0;
     this.isGameOver = false;
     this.isPaused = false;
     this.entities = [];
+    this.gravityWells = [];
     this.player.hp = 100;
     this.player.pos.x = this.canvasSize.width / 2 - this.player.size.width / 2;
+    
+    // Reset director and timers
+    this.director = new AIDirector();
+    this.currentSpawnConfig = this.director.getSpawnConfig();
+    this.spawnTimer = 0;
+    this.gravityWellTimer = 0;
+    this.nextGravityWellSpawn = 5 + Math.random() * 10;
   }
 }

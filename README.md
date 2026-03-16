@@ -17,6 +17,27 @@ A modern take on the classic Space Invaders arcade game built with React and Typ
 - **Shockwave Mechanics** - Chain reactions when destroying monsters
 - **Particle Effects** - Fire particles on enemy destruction
 
+### 🎯 Adaptive AI Director (NEW)
+- **Dynamic Difficulty Adjustment** - Tracks player performance over 30-second rolling window
+- **Pressure-Based Spawning** - Adjusts spawn rates, enemy density, and aggression based on skill level
+- **Performance Metrics Tracked**:
+  - Shot accuracy (hits/shots fired)
+  - Damage taken rate
+  - Kill combo streaks (kills within 1 second)
+  - Score velocity (points per second)
+- **Visual Feedback** - Pressure bar at top of screen shifts from blue (easy) → white (balanced) → red (intense)
+- **Exponential Smoothing** - Gradual difficulty transitions prevent abrupt changes
+
+### 🌌 Gravity Wells (NEW)
+- **Environmental Hazards** - Spawn every 20-40 seconds in the middle of the screen
+- **Gravitational Physics** - Deflects projectiles using inverse-square law (F = strength/d²)
+- **Bullet Trails** - Player bullets leave fading cyan trails when curved by gravity
+- **Bonus Kills** - Enemies pulled into well center are destroyed instantly (+15 points)
+- **Visual Effects**:
+  - Purple radial gradient with rotating concentric rings
+  - Spiral particles orbiting inward
+  - Implosion animation on despawn
+
 ### Player Ship "SHIVANSH"
 - Sleek white design with cyan glow effects
 - Rotating turret that follows mouse position (±60° range)
@@ -83,10 +104,12 @@ space-invaders/
 │   │   └── GameCanvas.tsx  # Canvas rendering & game loop
 │   ├── game/
 │   │   ├── types.ts        # TypeScript interfaces/enums
-│   │   ├── GameManager.ts  # Core game logic & collision detection
+│   │   ├── GameManager.ts  # Core game logic, collision detection, gravity wells
+│   │   ├── AIDirector.ts   # Adaptive difficulty system (NEW)
+│   │   ├── GravityWell.ts  # Environmental hazard class (NEW)
 │   │   ├── Player.ts       # Player ship class
 │   │   ├── Enemy.ts        # Enemy entities (ships, monsters, meteors)
-│   │   ├── Projectile.ts   # Bullets & fire particles
+│   │   ├── Projectile.ts   # Bullets & fire particles with trail support
 │   │   └── ShockBlast.ts   # Explosion effect class
 │   ├── App.tsx             # Main app component
 │   ├── index.tsx           # Entry point
@@ -157,6 +180,7 @@ The GameManager handles:
 |--------|--------|
 | Destroy Enemy Ship | +10 |
 | Destroy Monster | +20 |
+| Gravity Well Kill | +15 (bonus) |
 | Chain Reaction Kill | Bonus |
 
 ---
