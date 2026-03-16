@@ -221,7 +221,7 @@ export class AIDirector {
     const hardConfig: SpawnConfig = {
       spawnInterval: 800,       // Rapid waves
       enemyDensity: 6,          // Dense enemy formations
-      monsterRatio: 0.45,       ~Many monsters for chain reactions
+      monsterRatio: 0.45,        // Many monsters for chain reactions
       meteorFrequency: 0.35,    // Frequent meteors
       enemyFireRate: 2.0        // Aggressive firing
     };

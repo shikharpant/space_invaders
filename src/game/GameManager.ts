@@ -377,7 +377,7 @@ export class GameManager {
       // Apply gravity to projectiles (player bullets, enemy bullets, fire particles)
       const projectiles = this.entities.filter(e => e.type === EntityType.PROJECTILE);
       projectiles.forEach(p => {
-        well.applyGravity(p.pos, p.velocity);
+        well.applyGravity((p as any).pos, (p as any).velocity);
       });
 
       // Apply gravity to falling enemies (debris from shockwaves)
